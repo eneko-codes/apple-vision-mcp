@@ -1,0 +1,62 @@
+{
+  "manifest_version": "0.3",
+  "name": "apple-vision-mcp",
+  "display_name": "Vision",
+  "version": "1.0.0",
+  "description": "OCR images and scanned PDFs through Vision's text recognition",
+  "long_description": "A local MCP server written in Swift for optical character recognition: reads text out of an image (PNG, JPEG, HEIC, TIFF…) or out of a scanned PDF, page by page, through Vision's VNRecognizeTextRequest.\n\nFor a PDF, PDFKit is used only to rasterize each page into a bitmap — this server never reads a PDF's own text layer, outline or metadata. That is apple-pdf-mcp's job, and it is faster and more accurate whenever a PDF actually has a text layer. Try pdf_read first on any PDF; vision_ocr is what reads the scan pdf_read cannot.\n\nThe folder list below is the ONE deliberate exception to \"nothing to configure\" in this family of extensions: it is the security boundary itself, not a preference, so there is no sensible default to hardcode in its place. Leaving it blank means reading nothing; guessing one would mean guessing what may be exposed.\n\nThis server never writes anything and has no delete of any kind.\n\nNot affiliated with or endorsed by Apple Inc.",
+  "author": {
+    "name": "eneko-codes",
+    "url": "https://github.com/eneko-codes"
+  },
+  "homepage": "https://github.com/eneko-codes/apple-vision-mcp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eneko-codes/apple-vision-mcp"
+  },
+  "license": "MIT",
+  "icon": "icon.png",
+  "keywords": [
+    "vision",
+    "ocr",
+    "text recognition",
+    "macos"
+  ],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/apple-vision-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/apple-vision-mcp",
+      "args": [
+        "--read-roots",
+        "${user_config.read_roots}"
+      ],
+      "env": {}
+    }
+  },
+  "tools": [
+    {
+      "name": "vision_status",
+      "description": "Reports which folders this server may read and whether macOS is actually letting it reach them. Reads no file contents."
+    },
+    {
+      "name": "vision_ocr",
+      "description": "Runs Vision's text recognition over an image (PNG, JPEG, HEIC, TIFF…) or over a PDF, rendering each page first. Returns the recognised lines in reading order."
+    }
+  ],
+  "user_config": {
+    "read_roots": {
+      "type": "directory",
+      "title": "Folders Claude may read",
+      "multiple": true,
+      "required": true,
+      "description": "Claude can run OCR on any image or PDF inside these. Nothing outside them is reachable."
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "darwin"
+    ]
+  }
+}
