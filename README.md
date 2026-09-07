@@ -11,12 +11,6 @@ No Finder, no Apple events, no network. Everything is a direct `Vision` call, ga
 one allow-list of folders chosen when the extension is installed. Nothing outside it is
 reachable, by any tool.
 
-This server is one of a 4-way split of what used to be `apple-filesystem-mcp`'s combined
-FileManager + Spotlight + PDFKit + Vision surface. Its siblings are
-[apple-filesystem-mcp](https://github.com/eneko-codes/apple-filesystem-mcp) (files),
-[apple-spotlight-mcp](https://github.com/eneko-codes/apple-spotlight-mcp) (search) and
-[apple-pdf-mcp](https://github.com/eneko-codes/apple-pdf-mcp) (PDF text/outline/metadata).
-
 Not affiliated with or endorsed by Apple Inc.
 
 ## Requirements
@@ -33,6 +27,21 @@ Not affiliated with or endorsed by Apple Inc.
 | `vision_status` | read | Reports the read scope and whether macOS is actually letting this process reach it. Reads no file contents. |
 | `vision_ocr` | read | Runs Vision's text recognition over an image or a PDF, rendering each page first. |
 
+## Frameworks and APIs
+
+| Used | For | Reference |
+|---|---|---|
+| Vision — `VNRecognizeTextRequest`, `VNImageRequestHandler`, `VNRecognizedTextObservation` | The recognition itself, at `.accurate` with language correction on | [Vision](https://developer.apple.com/documentation/vision) |
+| PDFKit — `PDFDocument`, `PDFPage.draw(with:to:)` | Rasterising a PDF page. Nothing else: no text, outline or metadata is ever read | [PDFKit](https://developer.apple.com/documentation/pdfkit) |
+| Image I/O — `CGImageSourceCreateWithURL` | Loading an image file | [Image I/O](https://developer.apple.com/documentation/imageio) |
+| Core Graphics — `CGContext`, `CGColorSpace` | The bitmap a PDF page is drawn into | [Core Graphics](https://developer.apple.com/documentation/coregraphics) |
+
+Vision ships 42 request classes; this server uses one. Barcode detection, document
+segmentation, face and body analysis, image classification, saliency, feature prints and all
+tracking and registration are available in the framework and deliberately not wired up. The
+newer Swift-only Vision API (`RecognizeTextRequest`, `RecognizeDocumentsRequest`) is not used
+either — this is the Objective-C `VN*` API.
+
 ## The rules worth knowing before you use it
 
 **Canonicalise first, then compare — the order is not negotiable.** Every path is
@@ -46,16 +55,15 @@ never mistaken for something inside `Documents`.
 
 **PDFKit here is a rasterizer, nothing more.** For a PDF, `vision_ocr` renders each page
 to a bitmap and runs Vision over the pixels — it never reads the PDF's own text, outline
-or metadata. That line is deliberate:
-[apple-pdf-mcp](https://github.com/eneko-codes/apple-pdf-mcp)'s `pdf_read` is the tool
-for a PDF's real text layer, is faster and more accurate, and says explicitly when a PDF
-has no text layer at all. Try `pdf_read` first; `vision_ocr` is what reads the scan
-`pdf_read` cannot.
+or metadata. That line is deliberate: a PDF that
+already has a text layer should have it read directly, which is faster and more accurate than
+recognising pixels. This server is for the scan that has no text layer.
 
 **This server has no write of any kind.** It only ever opens a file and reads it.
 
-**OCR is slower and less accurate than a real text layer.** Recognition is Vision's; the
-lines come back exactly as it found them, with no correction or reordering applied here.
+**OCR is slower and less accurate than a real text layer.** Recognition is Vision's, with
+language correction on; the top candidate per line is kept, and the lines come back in the
+order Vision found them — this server does no reordering of its own.
 
 ## Install
 
@@ -82,8 +90,8 @@ and the old one keeps answering.
 
 ### 3. Configure the read scope
 
-Like its siblings, this server is the deliberate exception to "nothing to configure" in
-this family of extensions: `read_roots` is not a preference with a sensible default, it
+This server is the deliberate exception to "nothing to configure":
+`read_roots` is not a preference with a sensible default, it
 is the security boundary itself. In Claude Desktop → Settings → Extensions → Vision, set
 **Folders Claude may read** — Claude can run OCR on anything inside these; nothing
 outside them is reachable at all. There is no hardcoded fallback like `~/Documents` — an
@@ -166,12 +174,11 @@ since there is no `user_config` to fill it in for you.
 
 ## Known limits
 
-- **No PDF text/outline/metadata.** `vision_ocr` only ever rasterizes a PDF page to
-  pixels; [apple-pdf-mcp](https://github.com/eneko-codes/apple-pdf-mcp) is the tool for
-  a PDF's real text layer.
-- **Vision's recognition is what it is.** No correction, reordering or confidence
-  filtering happens in this server — the recognised lines come back exactly as Vision
-  found them.
+- **No PDF text, outline or metadata.** `vision_ocr` only ever rasterizes a PDF page to
+  pixels. A PDF's own text layer is not read here at all.
+- **Vision's recognition is what it is.** The request runs with language correction on and
+  keeps the top candidate per line; beyond that this server does no reordering and no
+  confidence filtering.
 
 ## Development
 
