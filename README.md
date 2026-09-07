@@ -186,8 +186,7 @@ accidentally reached a real file fails loudly rather than quietly passing. See
 `CLAUDE.md`, whose first section is the hard rule that makes that non-negotiable: no
 agent working in this repository may touch a file outside it.
 
-Manual verification against real files is the owner's job, by hand, with MCP Inspector;
-`verification.md` is the script for it.
+Manual verification against real files is the owner's job, by hand, with MCP Inspector.
 
 ## Licence
 
