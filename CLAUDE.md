@@ -44,6 +44,10 @@ named in the question you asked, it has to have a way back, and you have to say 
 you are on and why the gentler ones cannot answer it. Whatever you created, remove in the
 same session.
 
+**What you make goes in `$TMPDIR`.** Images and PDFs to run recognition against belong
+under a temporary directory you created yourself — never under `~` — and are deleted in the
+same session. Render or synthesise one there rather than reaching for a real document.
+
 ## What this is
 
 A local MCP server (Swift 6, stdio transport) for OCR: reading text out of an image or a scanned PDF through `Vision`'s `VNRecognizeTextRequest`. No Finder, no Apple events, no network, no write of any kind.
