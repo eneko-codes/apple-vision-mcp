@@ -24,4 +24,6 @@ public protocol VisionStore: Sendable {
     // MARK: Reads
 
     func ocr(_ path: ScopedPath, pages: PageRange?, languages: [String]) async throws -> OCRContent
+
+    func barcodes(_ path: ScopedPath, pages: PageRange?) async throws -> BarcodeContent
 }

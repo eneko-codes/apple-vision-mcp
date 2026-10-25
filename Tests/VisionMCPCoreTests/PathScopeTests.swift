@@ -31,6 +31,10 @@ struct StubStore: VisionStore {
     {
         throw ToolError.storeFailure("a scope test reached a file, which it must never do")
     }
+
+    func barcodes(_ path: ScopedPath, pages: PageRange?) async throws -> BarcodeContent {
+        throw ToolError.storeFailure("a scope test reached a file, which it must never do")
+    }
 }
 
 /// The safety property this whole server exists for: a path outside the configured roots

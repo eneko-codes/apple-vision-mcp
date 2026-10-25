@@ -4,7 +4,7 @@
 
 # apple-vision-mcp
 
-A local MCP server, written in Swift, exposing OCR to Claude through `Vision`. It ships
+A local MCP server, written in Swift, exposing OCR and barcode reading to Claude through `Vision`. It ships
 as a Claude extension.
 
 No Finder, no Apple events, no network. Everything is a direct `Vision` call, gated by
@@ -26,19 +26,21 @@ Not affiliated with or endorsed by Apple Inc.
 |---|---|---|
 | `vision_status` | read | Reports the read scope and whether macOS is actually letting this process reach it. Reads no file contents. |
 | `vision_ocr` | read | Runs Vision's text recognition over an image or a PDF, rendering each page first. |
+| `vision_barcodes` | read | Runs Vision's barcode detection over an image or a PDF, rendering each page first. Returns each code's symbology, decoded payload and pixel box. |
 
 ## Frameworks and APIs
 
 | Used | For | Reference |
 |---|---|---|
 | Vision — `VNRecognizeTextRequest`, `VNImageRequestHandler`, `VNRecognizedTextObservation` | The recognition itself, at `.accurate` with language correction on | [Vision](https://developer.apple.com/documentation/vision) |
+| Vision — `VNDetectBarcodesRequest`, `VNBarcodeObservation` | Barcode and QR detection over every symbology Vision supports; payload, symbology and bounding box | [VNDetectBarcodesRequest](https://developer.apple.com/documentation/vision/vndetectbarcodesrequest) |
 | PDFKit — `PDFDocument`, `PDFPage.draw(with:to:)` | Rasterising a PDF page. Nothing else: no text, outline or metadata is ever read | [PDFKit](https://developer.apple.com/documentation/pdfkit) |
 | Image I/O — `CGImageSourceCreateWithURL` | Loading an image file | [Image I/O](https://developer.apple.com/documentation/imageio) |
 | Core Graphics — `CGContext`, `CGColorSpace` | The bitmap a PDF page is drawn into | [Core Graphics](https://developer.apple.com/documentation/coregraphics) |
 
-Vision ships 42 request classes; this server uses one. Barcode detection, document
-segmentation, face and body analysis, image classification, saliency, feature prints and all
-tracking and registration are available in the framework and deliberately not wired up. The
+Vision ships dozens of request classes; this server uses two. Document segmentation, face
+and body analysis, image classification, saliency, feature prints and all tracking and
+registration are available in the framework and deliberately not wired up. The
 newer Swift-only Vision API (`RecognizeTextRequest`, `RecognizeDocumentsRequest`) is not used
 either — this is the Objective-C `VN*` API.
 
@@ -93,7 +95,7 @@ and the old one keeps answering.
 This server is the deliberate exception to "nothing to configure":
 `read_roots` is not a preference with a sensible default, it
 is the security boundary itself. In Claude Desktop → Settings → Extensions → Vision, set
-**Folders Claude may read** — Claude can run OCR on anything inside these; nothing
+**Folders Claude may read** — Claude can run OCR and read barcodes on anything inside these; nothing
 outside them is reachable at all. There is no hardcoded fallback like `~/Documents` — an
 unconfigured install reaches nothing, deliberately, rather than reaching folders nobody
 chose.
@@ -176,6 +178,8 @@ since there is no `user_config` to fill it in for you.
 
 - **No PDF text, outline or metadata.** `vision_ocr` only ever rasterizes a PDF page to
   pixels. A PDF's own text layer is not read here at all.
+- **A payload is data, not a command.** The text inside a QR code is whatever its author
+  put there. It is returned as text and nothing here opens a link it holds.
 - **Vision's recognition is what it is.** The request runs with language correction on and
   keeps the top candidate per line; beyond that this server does no reordering and no
   confidence filtering.
@@ -187,9 +191,11 @@ swift build
 swift test
 ```
 
-Tests across two suites — `PathScopeTests` and `CatalogueTests` — all against a modelled
-scope that throws from every method except `canonicalise`, so a scope test that
-accidentally reached a real file fails loudly rather than quietly passing. See
+The scope and catalogue tests run against a modelled store that throws from every method
+except `canonicalise`, so a scope test that accidentally reached a real file fails loudly
+rather than quietly passing. The barcode detection tests draw their own QR codes and
+barcodes with Core Image into a directory they create under `$TMPDIR` and remove before
+they return. See
 `CLAUDE.md`, whose first section is the hard rule that makes that non-negotiable: no
 agent working in this repository may touch a file outside it.
 

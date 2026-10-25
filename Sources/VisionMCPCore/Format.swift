@@ -55,6 +55,48 @@ public struct Format: Sendable {
         return sections.joined(separator: "\n\n")
     }
 
+    public func barcodes(_ content: BarcodeContent, path: String) -> String {
+        let total = content.pages.reduce(0) { $0 + $1.barcodes.count }
+        var sections = [
+            Self.block([
+                ("path", path),
+                ("source", content.source),
+                ("barcodes", "\(total)"),
+            ])
+        ]
+        if total == 0 {
+            sections.append(
+                """
+                Vision found no barcode or QR code.
+
+                That is a real answer for an image with none in it. If one is there, it may \
+                be too small, cropped through its quiet zone, or low-contrast; a larger or \
+                cleaner capture is what helps.
+                """)
+        }
+        for page in content.pages where !page.barcodes.isEmpty {
+            var lines: [String] = []
+            if content.pages.count > 1 {
+                lines.append("── page \(page.number) ──")
+            }
+            lines.append("image \(page.pixelWidth)×\(page.pixelHeight) px")
+            for (index, code) in page.barcodes.enumerated() {
+                lines.append(
+                    Self.block([
+                        ("#\(index + 1)", code.symbology),
+                        ("payload", code.payload ?? "(bytes that are not text)"),
+                        (
+                            "box",
+                            "x=\(code.x) y=\(code.y) w=\(code.width) h=\(code.height) "
+                                + "(px, origin top-left)"
+                        ),
+                    ]))
+            }
+            sections.append(lines.joined(separator: "\n"))
+        }
+        return sections.joined(separator: "\n\n")
+    }
+
     // MARK: Status
 
     public func status(probes: [RootProbe], binaryPath: String) -> String {

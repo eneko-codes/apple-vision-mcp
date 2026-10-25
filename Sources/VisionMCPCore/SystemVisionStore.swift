@@ -89,46 +89,75 @@ public struct SystemVisionStore: VisionStore {
     public func ocr(_ path: ScopedPath, pages: PageRange?, languages: [String]) async throws
         -> OCRContent
     {
-        let url = URL(fileURLWithPath: path.path)
-        guard fileManager.fileExists(atPath: path.path) else {
-            throw ToolError.notFound(path: path.path)
+        let (source, recognised) = try Self.eachPage(of: path, range: pages) { number, image in
+            OCRContent.Page(number: number, lines: try Self.recogniseText(in: image, languages: languages))
         }
-
-        var recognised: [OCRContent.Page] = []
-        let source: String
-
-        if let document = PDFDocument(url: url), document.pageCount > 0, !document.isLocked {
-            source = "pdf"
-            let range = (pages ?? PageRange(first: 1, last: document.pageCount))
-                .clamped(to: document.pageCount)
-            for number in range.first...range.last {
-                guard let page = document.page(at: number - 1),
-                    let image = Self.render(page)
-                else { continue }
-                recognised.append(
-                    OCRContent.Page(
-                        number: number, lines: try Self.recogniseText(in: image, languages: languages)
-                    ))
-            }
-        } else {
-            source = "image"
-            guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
-                let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
-            else {
-                throw ToolError.unreadableImage(path: path.path)
-            }
-            recognised = [
-                OCRContent.Page(
-                    number: 1, lines: try Self.recogniseText(in: image, languages: languages))
-            ]
-        }
-
         return OCRContent(
             pages: recognised, source: source,
             recognisedLanguages: languages.isEmpty ? ["(Vision's choice)"] : languages)
     }
 
+    public func barcodes(_ path: ScopedPath, pages: PageRange?) async throws -> BarcodeContent {
+        let (source, scanned) = try Self.eachPage(of: path, range: pages) { number, image in
+            BarcodeContent.Page(
+                number: number, pixelWidth: image.width, pixelHeight: image.height,
+                barcodes: try Self.detectBarcodes(in: image))
+        }
+        return BarcodeContent(pages: scanned, source: source)
+    }
+
     // MARK: - Helpers
+
+    /// Loads the file as an image, or as a PDF rendered page by page, and hands each
+    /// bitmap to `body` in turn. One bitmap is alive at a time: a long scan rendered up
+    /// front would hold every page in memory at once.
+    private static func eachPage<Result>(
+        of path: ScopedPath, range: PageRange?,
+        _ body: (_ number: Int, _ image: CGImage) throws -> Result
+    ) throws -> (source: String, results: [Result]) {
+        let url = URL(fileURLWithPath: path.path)
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            throw ToolError.notFound(path: path.path)
+        }
+
+        if let document = PDFDocument(url: url), document.pageCount > 0, !document.isLocked {
+            let clamped = (range ?? PageRange(first: 1, last: document.pageCount))
+                .clamped(to: document.pageCount)
+            var results: [Result] = []
+            for number in clamped.first...clamped.last {
+                guard let page = document.page(at: number - 1), let image = render(page)
+                else { continue }
+                results.append(try body(number, image))
+            }
+            return ("pdf", results)
+        }
+
+        guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
+            let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+        else {
+            throw ToolError.unreadableImage(path: path.path)
+        }
+        return ("image", [try body(1, image)])
+    }
+
+    /// Every symbology Vision supports, which is its default when none is named.
+    private static func detectBarcodes(in image: CGImage) throws -> [BarcodeContent.Barcode] {
+        let request = VNDetectBarcodesRequest()
+        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        let width = CGFloat(image.width)
+        let height = CGFloat(image.height)
+        return (request.results ?? []).map { observation in
+            let box = observation.boundingBox
+            return BarcodeContent.Barcode(
+                symbology: observation.symbology.rawValue.replacingOccurrences(
+                    of: "VNBarcodeSymbology", with: ""),
+                payload: observation.payloadStringValue,
+                x: Int((box.minX * width).rounded()),
+                y: Int(((1 - box.maxY) * height).rounded()),
+                width: Int((box.width * width).rounded()),
+                height: Int((box.height * height).rounded()))
+        }
+    }
 
     /// Renders a PDF page into a bitmap for Vision.
     ///
