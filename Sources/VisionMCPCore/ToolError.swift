@@ -53,7 +53,7 @@ public enum ToolError: Error, Equatable {
             return """
                 '\(path)' could not be decoded as an image.
 
-                vision_ocr accepts what ImageIO reads — PNG, JPEG, HEIC, TIFF, GIF, BMP —
+                This server accepts what ImageIO reads — PNG, JPEG, HEIC, TIFF, GIF, BMP —
                 and PDF files, which it renders page by page.
                 """
 

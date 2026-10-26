@@ -63,6 +63,58 @@ public struct OCRContent: Sendable, Equatable {
     }
 }
 
+public struct BarcodeContent: Sendable, Equatable {
+    public struct Barcode: Sendable, Equatable {
+        /// Vision's symbology name without its `VNBarcodeSymbology` prefix: "QR",
+        /// "Code128", "EAN13"…
+        public let symbology: String
+        /// Nil when the code carries bytes that are not text, which is a real answer and
+        /// not a failure to decode.
+        public let payload: String?
+        /// Pixels of the image Vision was given, origin top-left. Vision's own boxes are
+        /// normalised with the origin bottom-left, which nobody reading a result expects.
+        public let x: Int
+        public let y: Int
+        public let width: Int
+        public let height: Int
+
+        public init(
+            symbology: String, payload: String?, x: Int, y: Int, width: Int, height: Int
+        ) {
+            self.symbology = symbology
+            self.payload = payload
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+        }
+    }
+
+    public struct Page: Sendable, Equatable {
+        public let number: Int
+        /// The bitmap's size, so the boxes can be read against something.
+        public let pixelWidth: Int
+        public let pixelHeight: Int
+        public let barcodes: [Barcode]
+
+        public init(number: Int, pixelWidth: Int, pixelHeight: Int, barcodes: [Barcode]) {
+            self.number = number
+            self.pixelWidth = pixelWidth
+            self.pixelHeight = pixelHeight
+            self.barcodes = barcodes
+        }
+    }
+
+    public let pages: [Page]
+    /// "image" or "pdf", as for `OCRContent`.
+    public let source: String
+
+    public init(pages: [Page], source: String) {
+        self.pages = pages
+        self.source = source
+    }
+}
+
 // MARK: - Status
 
 /// What one configured root is actually worth right now. There is no API that asks TCC

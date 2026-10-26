@@ -51,6 +51,9 @@ public struct VisionTools: Sendable {
         case ToolCatalog.ocrName:
             return try await ocr(arguments)
 
+        case ToolCatalog.barcodesName:
+            return try await barcodes(arguments)
+
         default:
             throw ToolError.badArgument(
                 name: "name", reason: "'\(parameters.name)' is not a tool of this server")
@@ -66,6 +69,12 @@ public struct VisionTools: Sendable {
         let content = try await store.ocr(
             path, pages: try arguments.pageRange(), languages: try arguments.stringArray("languages"))
         return format.ocr(content, path: path.path)
+    }
+
+    private func barcodes(_ arguments: Arguments) async throws -> String {
+        let path = try scope.resolve(try arguments.requiredString("path"))
+        let content = try await store.barcodes(path, pages: try arguments.pageRange())
+        return format.barcodes(content, path: path.path)
     }
 
     static var binaryPath: String {
