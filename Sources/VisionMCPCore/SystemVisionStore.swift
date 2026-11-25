@@ -41,7 +41,7 @@ public struct SystemVisionStore: VisionStore {
         guard expanded.hasPrefix("/") else {
             throw ToolError.badArgument(
                 name: "path",
-                reason: "'\(path)' is not absolute. Give a full path, or one starting with ~")
+                reason: "'\(ToolStandard.echo(path))' is not absolute. Give a full path, or one starting with ~")
         }
 
         let standardised = URL(fileURLWithPath: expanded).standardizedFileURL
@@ -86,24 +86,38 @@ public struct SystemVisionStore: VisionStore {
 
     // MARK: - Reads
 
-    public func ocr(_ path: ScopedPath, pages: PageRange?, languages: [String]) async throws
-        -> OCRContent
-    {
-        let (source, recognised) = try Self.eachPage(of: path, range: pages) { number, image in
-            OCRContent.Page(number: number, lines: try Self.recogniseText(in: image, languages: languages))
+    public func ocr(
+        _ path: ScopedPath, pages: PageRange, languages: [String], characterBudget: Int,
+        deadline: ContinuousClock.Instant
+    ) async throws -> OCRContent {
+        let read = try Self.eachPage(
+            of: path, range: pages, deadline: deadline,
+            stopWhen: { pages in pages.reduce(0) { $0 + $1.text.count } >= characterBudget }
+        ) { number, image in
+            guard let image else { return OCRContent.Page(number: number, lines: [], rendered: false) }
+            return OCRContent.Page(number: number, lines: try Self.recogniseText(in: image, languages: languages))
         }
         return OCRContent(
-            pages: recognised, source: source,
-            recognisedLanguages: languages.isEmpty ? ["(Vision's choice)"] : languages)
+            pages: read.results, source: read.source,
+            recognisedLanguages: languages.isEmpty ? ["(Vision's choice)"] : languages,
+            pageCount: read.pageCount, timeBudgetReached: read.timeBudgetReached)
     }
 
-    public func barcodes(_ path: ScopedPath, pages: PageRange?) async throws -> BarcodeContent {
-        let (source, scanned) = try Self.eachPage(of: path, range: pages) { number, image in
-            BarcodeContent.Page(
+    public func barcodes(
+        _ path: ScopedPath, pages: PageRange, deadline: ContinuousClock.Instant
+    ) async throws -> BarcodeContent {
+        let read = try Self.eachPage(of: path, range: pages, deadline: deadline) { number, image in
+            guard let image else {
+                return BarcodeContent.Page(
+                    number: number, pixelWidth: 0, pixelHeight: 0, barcodes: [], rendered: false)
+            }
+            return BarcodeContent.Page(
                 number: number, pixelWidth: image.width, pixelHeight: image.height,
                 barcodes: try Self.detectBarcodes(in: image))
         }
-        return BarcodeContent(pages: scanned, source: source)
+        return BarcodeContent(
+            pages: read.results, source: read.source, pageCount: read.pageCount,
+            timeBudgetReached: read.timeBudgetReached)
     }
 
     // MARK: - Helpers
@@ -111,25 +125,34 @@ public struct SystemVisionStore: VisionStore {
     /// Loads the file as an image, or as a PDF rendered page by page, and hands each
     /// bitmap to `body` in turn. One bitmap is alive at a time: a long scan rendered up
     /// front would hold every page in memory at once.
+    ///
+    /// The time is checked between pages, never inside one: a Vision request that has
+    /// started cannot be interrupted from here. A call abandoned at its hard deadline is
+    /// cancelled, and the loop notices at the next page.
     private static func eachPage<Result>(
-        of path: ScopedPath, range: PageRange?,
-        _ body: (_ number: Int, _ image: CGImage) throws -> Result
-    ) throws -> (source: String, results: [Result]) {
+        of path: ScopedPath, range: PageRange, deadline: ContinuousClock.Instant,
+        stopWhen: ([Result]) -> Bool = { _ in false },
+        _ body: (_ number: Int, _ image: CGImage?) throws -> Result
+    ) throws -> (source: String, pageCount: Int, results: [Result], timeBudgetReached: Bool) {
         let url = URL(fileURLWithPath: path.path)
         guard FileManager.default.fileExists(atPath: path.path) else {
             throw ToolError.notFound(path: path.path)
         }
 
         if let document = PDFDocument(url: url), document.pageCount > 0, !document.isLocked {
-            let clamped = (range ?? PageRange(first: 1, last: document.pageCount))
-                .clamped(to: document.pageCount)
             var results: [Result] = []
-            for number in clamped.first...clamped.last {
-                guard let page = document.page(at: number - 1), let image = render(page)
-                else { continue }
+            let last = Swift.min(range.last, document.pageCount)
+            guard range.first <= last else { return ("pdf", document.pageCount, [], false) }
+            for number in range.first...last {
+                try Task.checkCancellation()
+                if !results.isEmpty, ContinuousClock.now >= deadline {
+                    return ("pdf", document.pageCount, results, true)
+                }
+                let image = document.page(at: number - 1).flatMap { render($0) }
                 results.append(try body(number, image))
+                if stopWhen(results) { break }
             }
-            return ("pdf", results)
+            return ("pdf", document.pageCount, results, false)
         }
 
         guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -137,7 +160,8 @@ public struct SystemVisionStore: VisionStore {
         else {
             throw ToolError.unreadableImage(path: path.path)
         }
-        return ("image", [try body(1, image)])
+        guard range.first == 1 else { return ("image", 1, [], false) }
+        return ("image", 1, [try body(1, image)], false)
     }
 
     /// Every symbology Vision supports, which is its default when none is named.

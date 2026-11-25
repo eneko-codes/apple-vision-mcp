@@ -27,12 +27,16 @@ struct StubStore: VisionStore {
 
     func probe(_ path: String) -> RootState { .reachable }
 
-    func ocr(_ path: ScopedPath, pages: PageRange?, languages: [String]) async throws -> OCRContent
-    {
+    func ocr(
+        _ path: ScopedPath, pages: PageRange, languages: [String], characterBudget: Int,
+        deadline: ContinuousClock.Instant
+    ) async throws -> OCRContent {
         throw ToolError.storeFailure("a scope test reached a file, which it must never do")
     }
 
-    func barcodes(_ path: ScopedPath, pages: PageRange?) async throws -> BarcodeContent {
+    func barcodes(_ path: ScopedPath, pages: PageRange, deadline: ContinuousClock.Instant)
+        async throws -> BarcodeContent
+    {
         throw ToolError.storeFailure("a scope test reached a file, which it must never do")
     }
 }
