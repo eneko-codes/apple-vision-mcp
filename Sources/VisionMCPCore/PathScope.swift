@@ -94,11 +94,16 @@ public struct PathScope: Sendable {
         return ScopedPath(path: path, exists: canonical.exists)
     }
 
-    /// Probes every configured root, for `vision_status`. The canonical form is carried
-    /// alongside when it differs, because a symlinked root governs a subtree nobody
-    /// typed and that is worth seeing before it surprises someone.
-    public func probeRoots() -> [RootProbe] {
-        configuredReadRoots.map { raw in
+    /// How many roots are configured, which `probeRoots` pages through.
+    public var configuredRootCount: Int { configuredReadRoots.count }
+
+    /// Probes the configured roots from `offset`, at most `limit`, in the order they were
+    /// configured, for `vision_status`. Only these are probed: reading every folder of a
+    /// long list to show one page of it would be wasted work. The canonical form is carried
+    /// alongside when it differs, because a symlinked root governs a subtree nobody typed
+    /// and that is worth seeing before it surprises someone.
+    public func probeRoots(offset: Int, limit: Int) -> [RootProbe] {
+        configuredReadRoots.dropFirst(offset).prefix(limit).map { raw in
             let canonical = (try? store.canonicalise(raw)).map { Self.normalise($0.path) }
             return RootProbe(
                 path: raw, state: store.probe(canonical ?? raw),

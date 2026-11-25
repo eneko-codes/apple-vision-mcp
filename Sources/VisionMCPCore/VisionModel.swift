@@ -30,12 +30,6 @@ public struct PageRange: Sendable, Equatable {
         self.first = first
         self.last = last
     }
-
-    public func clamped(to pageCount: Int) -> PageRange {
-        PageRange(
-            first: Swift.max(1, Swift.min(first, pageCount)),
-            last: Swift.max(1, Swift.min(last, pageCount)))
-    }
 }
 
 // MARK: - Content
@@ -44,22 +38,41 @@ public struct OCRContent: Sendable, Equatable {
     public struct Page: Sendable, Equatable {
         public let number: Int
         public let lines: [String]
+        /// False when the page could not be turned into a bitmap, which is not the same as
+        /// a page with no text on it.
+        public let rendered: Bool
 
-        public init(number: Int, lines: [String]) {
+        public init(number: Int, lines: [String], rendered: Bool = true) {
             self.number = number
             self.lines = lines
+            self.rendered = rendered
+        }
+
+        public var text: String {
+            rendered ? lines.joined(separator: "\n") : "(this page could not be rendered)"
         }
     }
 
+    /// The pages read, consecutive from the first one asked for. Fewer than asked when the
+    /// file ends sooner, when enough text had been read, or when the time budget ran out.
     public let pages: [Page]
     /// "image" or "pdf", so the answer says what Vision was actually pointed at.
     public let source: String
     public let recognisedLanguages: [String]
+    /// How many pages the file has: 1 for an image.
+    public let pageCount: Int
+    /// True when pages in the range were left unread because the time budget ran out.
+    public let timeBudgetReached: Bool
 
-    public init(pages: [Page], source: String, recognisedLanguages: [String]) {
+    public init(
+        pages: [Page], source: String, recognisedLanguages: [String], pageCount: Int,
+        timeBudgetReached: Bool = false
+    ) {
         self.pages = pages
         self.source = source
         self.recognisedLanguages = recognisedLanguages
+        self.pageCount = pageCount
+        self.timeBudgetReached = timeBudgetReached
     }
 }
 
@@ -96,22 +109,34 @@ public struct BarcodeContent: Sendable, Equatable {
         public let pixelWidth: Int
         public let pixelHeight: Int
         public let barcodes: [Barcode]
+        /// False when the page could not be turned into a bitmap.
+        public let rendered: Bool
 
-        public init(number: Int, pixelWidth: Int, pixelHeight: Int, barcodes: [Barcode]) {
+        public init(
+            number: Int, pixelWidth: Int, pixelHeight: Int, barcodes: [Barcode],
+            rendered: Bool = true
+        ) {
             self.number = number
             self.pixelWidth = pixelWidth
             self.pixelHeight = pixelHeight
             self.barcodes = barcodes
+            self.rendered = rendered
         }
     }
 
     public let pages: [Page]
     /// "image" or "pdf", as for `OCRContent`.
     public let source: String
+    public let pageCount: Int
+    public let timeBudgetReached: Bool
 
-    public init(pages: [Page], source: String) {
+    public init(
+        pages: [Page], source: String, pageCount: Int, timeBudgetReached: Bool = false
+    ) {
         self.pages = pages
         self.source = source
+        self.pageCount = pageCount
+        self.timeBudgetReached = timeBudgetReached
     }
 }
 

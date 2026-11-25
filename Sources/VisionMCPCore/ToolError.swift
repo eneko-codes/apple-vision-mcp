@@ -9,6 +9,11 @@ public enum ToolError: Error, Equatable {
     case unreadableImage(path: String)
     case permissionDenied(path: String, detail: String)
     case storeFailure(String)
+    case unknownTool(String)
+    case timedOut(seconds: Int)
+
+    /// How many of the configured folders an error names; the rest are only counted.
+    static let namedRoots = 5
 
     public var message: String {
         switch self {
@@ -25,12 +30,18 @@ public enum ToolError: Error, Equatable {
                 """
 
         case .pathOutOfScope(let requested, let resolved, let readRoots):
-            let scope = readRoots.isEmpty ? "(none configured)" : readRoots.joined(separator: ", ")
+            let named = readRoots.prefix(Self.namedRoots).map { ToolStandard.echo($0) }
+            let others = readRoots.count - named.count
+            let scope =
+                readRoots.isEmpty
+                ? "(none configured)"
+                : named.joined(separator: ", ") + (others > 0 ? " and \(others) more" : "")
             let resolution =
                 resolved == requested
-                ? "" : "\n\nIt resolves to:\n  \(resolved)\n(symlinks and .. are followed before the check, always)."
+                ? ""
+                : "\n\nIt resolves to:\n  \(ToolStandard.echo(resolved))\n(symlinks and .. are followed before the check, always)."
             return """
-                Path '\(requested)' is outside the scope this extension was configured with.\
+                Path '\(ToolStandard.echo(requested))' is outside the scope this extension was configured with.\
                 \(resolution)
 
                 Readable folders: \(scope)
@@ -47,11 +58,11 @@ public enum ToolError: Error, Equatable {
             return "Argument '\(name)' is not valid: \(reason)"
 
         case .notFound(let path):
-            return "Nothing exists at '\(path)'."
+            return "Nothing exists at '\(ToolStandard.echo(path))'."
 
         case .unreadableImage(let path):
             return """
-                '\(path)' could not be decoded as an image.
+                '\(ToolStandard.echo(path))' could not be decoded as an image.
 
                 This server accepts what ImageIO reads — PNG, JPEG, HEIC, TIFF, GIF, BMP —
                 and PDF files, which it renders page by page.
@@ -59,7 +70,7 @@ public enum ToolError: Error, Equatable {
 
         case .permissionDenied(let path, let detail):
             return """
-                macOS refused access to '\(path)': \(detail)
+                macOS refused access to '\(ToolStandard.echo(path))': \(ToolStandard.echo(detail))
 
                 The path is inside the configured scope, so this is a system permission,
                 not this server's allow-list. Two different grants can be missing:
@@ -80,7 +91,20 @@ public enum ToolError: Error, Equatable {
                 """
 
         case .storeFailure(let detail):
-            return "Vision returned an error: \(detail)"
+            return "Vision returned an error: \(ToolStandard.echo(detail))"
+
+        case .unknownTool(let name):
+            return "'\(ToolStandard.echo(name))' is not a tool of this server."
+
+        case .timedOut(let seconds):
+            return """
+                The call did not finish within \(seconds) seconds and was abandoned. This \
+                server only reads, so nothing was changed.
+
+                Reading a page cannot be interrupted once it has started, so the work may \
+                keep running for a moment in the background; its result is discarded. Ask \
+                for fewer pages with first_page and last_page, or for a smaller file.
+                """
         }
     }
 }

@@ -23,7 +23,16 @@ public protocol VisionStore: Sendable {
 
     // MARK: Reads
 
-    func ocr(_ path: ScopedPath, pages: PageRange?, languages: [String]) async throws -> OCRContent
+    /// Reads `pages` in order and stops early, with what it has, when the text read so far
+    /// reaches `characterBudget` or when `deadline` has passed (after at least one page, so
+    /// every call makes progress). A range that runs past the end of the file is cut to it.
+    func ocr(
+        _ path: ScopedPath, pages: PageRange, languages: [String], characterBudget: Int,
+        deadline: ContinuousClock.Instant
+    ) async throws -> OCRContent
 
-    func barcodes(_ path: ScopedPath, pages: PageRange?) async throws -> BarcodeContent
+    /// As `ocr`, without the text budget.
+    func barcodes(
+        _ path: ScopedPath, pages: PageRange, deadline: ContinuousClock.Instant
+    ) async throws -> BarcodeContent
 }

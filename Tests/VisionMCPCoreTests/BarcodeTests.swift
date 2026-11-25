@@ -18,12 +18,15 @@ struct BarcodeFormattingTests {
             CanonicalPath(path: path, exists: true)
         }
         func probe(_ path: String) -> RootState { .reachable }
-        func ocr(_ path: ScopedPath, pages: PageRange?, languages: [String]) async throws
-            -> OCRContent
-        {
+        func ocr(
+            _ path: ScopedPath, pages: PageRange, languages: [String], characterBudget: Int,
+            deadline: ContinuousClock.Instant
+        ) async throws -> OCRContent {
             throw ToolError.storeFailure("not used")
         }
-        func barcodes(_ path: ScopedPath, pages: PageRange?) async throws -> BarcodeContent {
+        func barcodes(_ path: ScopedPath, pages: PageRange, deadline: ContinuousClock.Instant)
+            async throws -> BarcodeContent
+        {
             content
         }
     }
@@ -37,11 +40,17 @@ struct BarcodeFormattingTests {
                     .init(symbology: "Code128", payload: nil, x: 150, y: 200, width: 200, height: 40),
                 ])
         ],
-        source: "image")
+        source: "image", pageCount: 1)
+
+    private func rendered(_ content: BarcodeContent) -> String {
+        let rows = Format.barcodeRows(content)
+        return Format().barcodes(
+            content, shown: rows, first: 0, total: rows.count, path: "/invented/ticket.png")
+    }
 
     @Test("Each code is listed with symbology, payload and a top-left pixel box")
     func formatsCodes() {
-        let text = Format().barcodes(sample, path: "/invented/ticket.png")
+        let text = rendered(sample)
         #expect(text.contains("barcodes 2"))
         #expect(text.contains("QR"))
         #expect(text.contains("ACME-REF-000123"))
@@ -54,8 +63,8 @@ struct BarcodeFormattingTests {
     func formatsEmpty() {
         let empty = BarcodeContent(
             pages: [.init(number: 1, pixelWidth: 10, pixelHeight: 10, barcodes: [])],
-            source: "image")
-        #expect(Format().barcodes(empty, path: "/invented/blank.png").contains("no barcode"))
+            source: "image", pageCount: 1)
+        #expect(rendered(empty).contains("no barcode"))
     }
 
     @Test("The tool is routed, scoped and rendered")
