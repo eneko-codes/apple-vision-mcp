@@ -2,7 +2,6 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import Foundation
 import ImageIO
-import MCP
 import Testing
 import UniformTypeIdentifiers
 
@@ -142,7 +141,7 @@ struct BarcodeDetectionTests {
         context.closePDF()
     }
 
-    private func call(_ file: URL, in directory: URL) async -> CallTool.Result {
+    private func call(_ file: URL, in directory: URL) async -> ToolOutput {
         var configuration = Configuration()
         configuration.readRoots = [directory.path]
         let tools = VisionTools(store: SystemVisionStore(), configuration: configuration)
@@ -150,11 +149,8 @@ struct BarcodeDetectionTests {
             .init(name: "vision_barcodes", arguments: ["path": .string(file.path)]))
     }
 
-    private func text(_ result: CallTool.Result) -> String {
-        result.content.compactMap {
-            if case .text(let text, _, _) = $0 { return text }
-            return nil
-        }.joined()
+    private func text(_ result: ToolOutput) -> String {
+        result.text
     }
 
     @Test("A QR code in a PNG is decoded with its payload and a box inside the image")
@@ -262,5 +258,14 @@ struct VersionTests {
         let declared = ((manifest as? [String: Any])?["tools"] as? [[String: Any]] ?? [])
             .compactMap { $0["name"] as? String }
         #expect(Set(declared) == Set(ToolCatalog.all().map(\.name)))
+    }
+
+    /// The server is built from the system's own frameworks and nothing else. A dependency
+    /// is a decision for the owner, so adding one has to break this test first.
+    @Test("The package declares no third-party dependency")
+    func noDependencies() throws {
+        let package = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)
+        #expect(!package.contains(".package("), "Package.swift declares a dependency")
+        #expect(!package.contains(".product("))
     }
 }
