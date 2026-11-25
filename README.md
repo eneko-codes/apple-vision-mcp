@@ -24,9 +24,33 @@ Not affiliated with or endorsed by Apple Inc.
 
 | Tool | Kind | What it does |
 |---|---|---|
-| `vision_status` | read | Reports the read scope and whether macOS is actually letting this process reach it. Reads no file contents. |
-| `vision_ocr` | read | Runs Vision's text recognition over an image or a PDF, rendering each page first. |
-| `vision_barcodes` | read | Runs Vision's barcode detection over an image or a PDF, rendering each page first. Returns each code's symbology, decoded payload and pixel box. |
+| `vision_status` | read | Reports the read scope, a page of folders at a time, and whether macOS is actually letting this process reach it. Reads no file contents. |
+| `vision_ocr` | read | Runs Vision's text recognition over an image or PDF pages, rendering each page first. Returns whole pages up to about one result; `first_page` and `last_page` choose pages, `character_offset` and `max_characters` read one page that is longer. |
+| `vision_barcodes` | read | Runs Vision's barcode detection over an image or a PDF, rendering each page first. Returns the codes found a page at a time (`limit`, `offset`), ordered by page, then top to bottom, then left to right, each with its symbology, decoded payload and pixel box. |
+
+## Bounds
+
+**Every result is bounded, and says what it left out.** `vision_ocr` returns whole pages
+until their text reaches about one usual result, never more pages than one call may read.
+`vision_barcodes` scans a bounded number of pages and returns its codes a page at a time.
+`vision_status` lists the configured folders a page at a time. When a result does not hold
+everything, its first lines say how much there is and the exact arguments that return the
+rest: `first_page` and `last_page` for pages, `limit` and `offset` for codes and folders,
+`character_offset` and `max_characters` for one page whose text is longer than a result. A
+number outside its range is moved to the nearest allowed value and the first lines say which
+was used; a `last_page` before `first_page`, an argument a tool does not have and a value of
+the wrong type are refused. The sizes are constants in `ToolCatalog.swift`, which the schemas,
+descriptions and instructions quote. No result is longer than `ToolStandard.longestResult`:
+each tool keeps to that itself, and the protocol layer cuts, with a notice, any result that
+did not.
+
+**What a deadline can and cannot stop.** Recognising a page takes seconds. The time is
+checked between pages: once the recognition budget is spent no further page is started and
+the call returns what it has, marked partial. A call that has not finished by its hard
+deadline is abandoned and answered with an error. Neither can interrupt a Vision request that
+is already running: it finishes in the background, its result is discarded, and no further
+page of that call is started. The file is only read, so nothing is changed either way. Both
+times are constants on `VisionTools`.
 
 ## Frameworks and APIs
 
